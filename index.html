@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Misión: Rectas en el plano</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b1f55;--bg2:#12338a;--ring:#ffc933;--ok:#2fe6a7;--bad:#ff6b81;--tx:#f4f7ff}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font:18px/1.45 Fredoka,system-ui,sans-serif;color:var(--tx);background:linear-gradient(160deg,var(--bg),var(--bg2));display:flex;justify-content:center}
+main{width:100%;max-width:560px;padding:16px;display:flex;flex-direction:column;gap:12px}
+#top{display:flex;gap:12px;align-items:flex-start}
+#mascot{flex:none;width:130px;transition:width .6s}
+.mini #mascot{width:64px}
+#b{background:#fff;color:#0b1f55;border-radius:18px 18px 18px 4px;padding:12px 16px;flex:1;min-height:64px;font-weight:600}
+#b.ok{background:#d9fff0}#b.bad{background:#ffe3e8}
+#wrap{display:none}.mini #wrap{display:block}
+svg#pl{width:100%;max-width:480px;aspect-ratio:1;background:#0a1844;border-radius:14px;display:block;margin:auto;touch-action:none}
+.g{stroke:#ffffff22}.a{stroke:#ffffff88}.t{fill:#ffffffaa;font-size:11px;text-anchor:middle}
+#ui{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button{font:inherit;font-weight:600;background:var(--ring);color:#0b1f55;border:0;border-radius:12px;padding:10px 18px;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid #fff;outline-offset:2px}
+input{font:inherit;width:84px;padding:8px;border-radius:10px;border:2px solid #ffffff55;background:#0a1844;color:#fff}
+input.w{width:170px}label{display:flex;align-items:center;gap:6px}
+#prog{height:6px;background:#ffffff22;border-radius:3px}#prog i{display:block;height:100%;width:0;background:var(--ring);border-radius:3px;transition:width .4s}
+#b,button{font-family:'Press Start 2P',monospace}
+#b{font-size:12px;line-height:1.8}
+button{font-size:12px}
+#mute{position:fixed;top:10px;right:10px;padding:6px 10px;font-size:16px}
+</style>
+</head>
+<body>
+<main id="app">
+<button id="mute" aria-label="Silenciar música">🔊</button>
+<div id="prog"><i id="pb"></i></div>
+<div id="top">
+<image id="mascot" src="mascota.png" alt="Tu acompañante">
+<div id="b" role="status" aria-live="polite">…</div>
+</div>
+<div id="wrap"><svg id="pl" viewBox="0 0 480 480" aria-label="Plano cartesiano"></svg></div>
+<div id="ui"></div>
+</main>
+<script>
+// ====== CONFIGURACION =======
+const ENDPOINT = "https://formspree.io/f/myekwrrn";
+const MASCOTA = "Sonic";
+// ============================
+const $=id=>document.getElementById(id), U=40, X=v=>240+v*U, Y=v=>240-v*U;
+let pts=[], lines=[], seg=false, pick=null, log=[], nStep=0, TOTAL=12, who=["",""];
+const f2=v=>String(+(+v).toFixed(2)).replace(".",",");
+function render(){
+ let s="";
+ for(let i=-6;i<=6;i++){const c=i?"g":"g a";
+  s+=`<line x1="${X(i)}" y1="0" x2="${X(i)}" y2="480" class="${c}"/><line x1="0" y1="${Y(i)}" x2="480" y2="${Y(i)}" class="${c}"/>`;
+  if(i)s+=`<text x="${X(i)}" y="254" class="t">${i}</text><text x="228" y="${Y(i)+4}" class="t">${i}</text>`}
+ lines.forEach((l,k)=>{const c=["#ffc933","#ff6b81"][k%2];
+  s+=l.x!==undefined?`<line x1="${X(l.x)}" y1="0" x2="${X(l.x)}" y2="480" stroke="${c}" stroke-width="3"/>`
+  :`<line x1="${X(-7)}" y1="${Y(-7*l.m+l.n)}" x2="${X(7)}" y2="${Y(7*l.m+l.n)}" stroke="${c}" stroke-width="3"/>`});
+ if(seg&&pts.length==2)s+=`<line x1="${X(pts[0][0])}" y1="${Y(pts[0][1])}" x2="${X(pts[1][0])}" y2="${Y(pts[1][1])}" stroke="#fff" stroke-width="3" stroke-dasharray="6 5"/>`;
+ pts.forEach(p=>s+=`<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="7" fill="#2fe6a7"/>`);
+ $("pl").innerHTML=s}
+$("pl").addEventListener("click",e=>{if(!pick)return;const r=$("pl").getBoundingClientRect();
+ const cl=v=>Math.max(-5,Math.min(5,Math.round(v)));
+ pick([cl(((e.clientX-r.left)/r.width*480-240)/U),cl((240-(e.clientY-r.top)/r.height*480)/U)])});
+let tw;
+const bub=(t,c="")=>{clearInterval(tw);const b=$("b");b.className=c;b.textContent="";let i=0;
+ tw=setInterval(()=>{b.textContent=t.slice(0,++i);if(t[i-1]!==" ")blip();if(i>=t.length)clearInterval(tw)},28)};
+const say=t=>new Promise(r=>{bub(`${MASCOTA}: ${t}`);$("ui").innerHTML='<button id="nx">Siguiente ▶</button>';$("nx").focus();$("nx").onclick=r});
+function prog(){$("pb").style.width=Math.min(100,++nStep/TOTAL*100)+"%"}
+const num=s=>{s=s.trim().replace(",",".");if(s.includes("/")){const[a,b]=s.split("/");return a/b}return s===""?NaN:+s};
+// ask: opts -> botones; f -> campos. ans=null no califica.
+function ask(id,text,o,ans,why){return new Promise(res=>{
+ bub(`${MASCOTA}: ${text}`);const ui=$("ui");ui.innerHTML="";
+ const done=vals=>{let ok=null;
+  if(ans!==null){ok=o.opts?vals[0]===ans:vals.every((v,i)=>Math.abs(num(v)-ans[i])<0.011);
+   log.push({p:id,r:vals.join(" ; "),c:o.opts?ans:ans.map(f2).join(" ; "),ok});prog();
+   bub(`${MASCOTA}: ${ok?"¡Correcto! ":"Mmm, casi. "}${why}`,ok?"ok":"bad")}
+  ui.innerHTML='<button id="nx">Siguiente ▶</button>';$("nx").focus();$("nx").onclick=()=>res(vals)};
+ if(o.opts)o.opts.forEach(t=>{const b=document.createElement("button");b.textContent=t;b.onclick=()=>done([t]);ui.append(b)});
+ else{const ins=o.f.map(x=>{const l=document.createElement("label"),i=document.createElement("input");
+   if(x.t)i.className="w";i.inputMode=x.t?"text":"decimal";l.append(x.l,i);ui.append(l);return i});
+  const b=document.createElement("button");b.textContent="Responder";ui.append(b);
+  b.onclick=()=>{const v=ins.map(i=>i.value.trim());if(v.some(x=>!x))return;if(ans===null)who=v;done(v)};ins[0].focus()}
+})}
+const pickTwo=()=>new Promise(res=>{let a=[];pts=[];render();
+ pick=p=>{if(a.length==1&&a[0][0]===p[0]){bub(`${MASCOTA}: Elige un punto con otra coordenada x (así la recta no queda vertical, eso lo vemos después).`);return}
+  a.push(p);pts=[...a];render();
+  if(a.length==2){pick=null;$("ui").innerHTML='<button id="nx">Listo ▶</button>';$("nx").onclick=()=>res(a)}else bub(`${MASCOTA}: Bien, falta un punto más.`)}});
+const scenes=[
+ {s:"Toda recta no vertical se escribe y = mx + n. La m es la pendiente y la n es el valor donde la recta corta al eje Y.",L:[{m:-3,n:5}],id:"Leer m y n",q:"En y = −3x + 5, ¿cuánto valen m y n?",f:["m","n"],a:[-3,5],w:"m es el número que acompaña a x (−3) y n es el término suelto (5)."},
+ {s:"Un punto pertenece a una recta si, al reemplazar sus coordenadas en la ecuación, la igualdad se cumple.",L:[{m:2,n:-3}],P:[[2,1]],id:"Punto en la recta",q:"¿El punto (2, 1) pertenece a y = 2x − 3?",o:["Sí","No"],a:"Sí",w:"Con x = 2: 2·2 − 3 = 1, que coincide con y = 1."},
+ {s:"Para graficar una recta basta ubicar sus interceptos. Con el eje Y: x = 0 (da n). Con el eje X: y = 0.",L:[{m:2,n:-4}],id:"Interceptos",q:"En y = 2x − 4, ¿en qué valor de x corta al eje X?",f:["x"],a:[2],w:"Se hace y = 0: 0 = 2x − 4, entonces x = 2."},
+ {s:"Casos especiales: y = k es una recta horizontal (m = 0). x = h es vertical y no tiene pendiente.",L:[{m:0,n:3},{x:-2}],id:"Horizontal y vertical",q:"¿Cómo es la recta x = 3?",o:["Horizontal","Vertical","Inclinada"],a:"Vertical",w:"Todos sus puntos tienen x = 3, por eso queda vertical."},
+ {s:"Con las ecuaciones despejadas (y = mx + n): son paralelas si m₁ = m₂ y perpendiculares si m₁ · m₂ = −1.",L:[{m:2,n:1},{m:-.5,n:3}],id:"Paralelas y perpendiculares",q:"Las rectas y = 2x + 1 e y = −½x + 4, ¿cómo son?",o:["Paralelas","Perpendiculares","Ninguna de las dos"],a:"Perpendiculares",w:"2 · (−½) = −1."},
+ {s:"Dos rectas juntas forman un sistema 2×2. Secantes: una solución. Paralelas: ninguna. Coincidentes: infinitas.",L:[{m:1,n:1},{m:1,n:3}],id:"Sistema 2x2",q:"En y = x + 1 e y = x + 3, ¿cuántas soluciones tiene el sistema?",o:["Una","Ninguna","Infinitas"],a:"Ninguna",w:"Tienen la misma pendiente y distinto n: son paralelas y nunca se cruzan."}];
+async function main(){
+ await say("¡Hola, querides estudiantes! Soy "+MASCOTA+", su acompañante de hoy.");
+ await say("La misión de hoy es conocer lo fundamental sobre las rectas en el ya conocido plano cartesiano.");
+ await say("¿Sabías que físicos, empresarios e incluso tu teléfono usan esta herramienta todos los días?");
+ await ask("Datos","Antes de partir, indicame tu nombre y apellido.",{f:[{l:"Nombre y apellido",t:1}]},null);
+ document.body.classList.add("mini");lines=[];pts=[];render();
+ await say("Voy a la esquina para dejarte el plano. Haz clic en dos puntos distintos.");
+ const P=await pickTwo();
+ const [[x1,y1],[x2,y2]]=P;
+ await ask("Leer coordenadas","Perfecto. Solo hay un problema: olvidé cómo leer una coordenada. ¿Me escribes las de tus dos puntos?",
+  {f:[{l:"x₁"},{l:"y₁"},{l:"x₂"},{l:"y₂"}]},[x1,y1,x2,y2],`Se lee primero el eje horizontal (x) y luego el vertical (y). Tus puntos son (${x1}, ${y1}) y (${x2}, ${y2}).`);
+ seg=true;render();const m=(y2-y1)/(x2-x1),n=y1-m*x1;
+ await say("Unimos los puntos. La pendiente m dice cuánto sube o baja la recta por cada paso a la derecha: m = (y₂ − y₁) / (x₂ − x₁).");
+ await say("Si m > 0 la recta sube de izquierda a derecha. Si m < 0 baja. Si m = 0 es horizontal.");
+ await ask("Calcular pendiente","Calcula la pendiente de tu recta (puedes usar fracción, como 1/2).",{f:[{l:"m"}]},[m],`m = (${y2} − ${y1}) / (${x2} − ${x1}) = ${f2(m)}.`);
+ const sg=m>0?"Sube":m<0?"Baja":"Horizontal";
+ await ask("Signo de la pendiente","¿Tu recta sube o baja de izquierda a derecha?",{opts:["Sube","Baja","Horizontal"]},sg,`Con m = ${f2(m)}, la recta ${sg.toLowerCase()}.`);
+ lines=[{m,n}];render();
+ await say(`Tu recta es y = ${f2(m)}x ${n<0?"−":"+"} ${f2(Math.abs(n))}.`);
+ for(const c of scenes){seg=false;pts=c.P||[];lines=c.L;render();await say(c.s);
+  await ask(c.id,c.q,c.o?{opts:c.o}:{f:c.f.map(l=>({l}))},c.a,c.w)}
+ lines=[];pts=[];render();
+ const ok=log.filter(x=>x.ok).length;
+ bub(`${MASCOTA}: ¡Misión cumplida, ${who[0]}! Enviando tus resultados…`);$("ui").innerHTML="";
+ const det=log.map((x,i)=>`${i+1}. ${x.p}: respondió "${x.r}" | correcto "${x.c}" | ${x.ok?"OK":"ERROR"}`).join("\n");
+ try{const r=await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},
+   body:JSON.stringify({_subject:`Inducción Rectas: ${who[0]}  ${ok}/${log.length}`,nombre:who[0],puntaje:`${ok}/${log.length}`,detalle:det})});
+  if(!r.ok)throw 0;bub(`${MASCOTA}: ¡Listo! Sacaste ${ok} de ${log.length}. Tu profe ya recibió tus resultados. Nos vemos en clase.`,"ok")}
+ catch(e){bub(`${MASCOTA}: No pude enviar tus resultados. Copia el texto y envíaselo a tu profe.`,"bad");
+  $("ui").innerHTML='<button id="cp">Copiar resultados</button>';
+  $("cp").onclick=()=>{navigator.clipboard.writeText(`${who[0]} ${ok}/${log.length}\n${det}`);$("cp").textContent="Copiado"}}}
+// ===== AUDIO ARCADE =====
+let AC,mg,on=true,k=0,nextT=0;
+const N=n=>440*2**((n-69)/12);
+const ACORDES=[[57,60,64],[53,57,60],[48,52,55],[55,59,62]]; // La menor, Fa, Do, Sol
+function tone(f,t,d,type,v){const o=AC.createOscillator(),g=AC.createGain();
+ o.type=type;o.frequency.value=f;g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);
+ o.connect(g);g.connect(mg);o.start(t);o.stop(t+d)}
+function blip(){if(AC)tone(520+Math.random()*140,AC.currentTime,.04,"square",.04)}
+function sched(){while(nextT<AC.currentTime+.3){
+ const ch=ACORDES[(k>>4)%4],s=k%16;
+ tone(N(ch[[0,1,2,1][s%4]]+(s%8>3?24:12)),nextT,.12,"square",.05);
+ if(s%4==0)tone(N(ch[0]-12),nextT,.3,"triangle",.12);
+ nextT+=.14;k++}}
+function startAudio(){if(AC)return;AC=new(window.AudioContext||window.webkitAudioContext)();
+ mg=AC.createGain();mg.gain.value=on?.5:0;mg.connect(AC.destination);
+ AC.resume();nextT=AC.currentTime+.1;setInterval(sched,100)}
+document.addEventListener("click",startAudio,{once:true});
+document.addEventListener("click",e=>{if(AC&&e.target.closest("button:not(#mute)")){
+ tone(988,AC.currentTime,.08,"square",.06);tone(1319,AC.currentTime+.08,.18,"square",.06)}});
+$("mute").onclick=()=>{on=!on;if(mg)mg.gain.value=on?.5:0;$("mute").textContent=on?"🔊":"🔇"};
+TOTAL=3+scenes.length;main();
+</script>
+</body>
+</html>
