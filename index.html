@@ -58,17 +58,18 @@ function render(){
   s+=l.x!==undefined?`<line x1="${X(l.x)}" y1="0" x2="${X(l.x)}" y2="480" stroke="${c}" stroke-width="3"/>`
   :`<line x1="${X(-7)}" y1="${Y(-7*l.m+l.n)}" x2="${X(7)}" y2="${Y(7*l.m+l.n)}" stroke="${c}" stroke-width="3"/>`});
  if(seg&&pts.length==2)s+=`<line x1="${X(pts[0][0])}" y1="${Y(pts[0][1])}" x2="${X(pts[1][0])}" y2="${Y(pts[1][1])}" stroke="#fff" stroke-width="3" stroke-dasharray="6 5"/>`;
- pts.forEach(p=>s+=`<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="7" fill="#2fe6a7"/>`);
+ pts.forEach((p,i)=>{const c=["#2fe6a7","#ffc933"][i],L=(pts.length==2||pick)?"AB"[i]:"P";
+  s+=`<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="8" fill="${c}"/><text x="${X(p[0])+12}" y="${Y(p[1])-10}" fill="${c}" font-size="20" font-weight="700">${L}</text>`});
  $("pl").innerHTML=s}
 $("pl").addEventListener("click",e=>{if(!pick)return;const r=$("pl").getBoundingClientRect();
  const cl=v=>Math.max(-5,Math.min(5,Math.round(v)));
  pick([cl(((e.clientX-r.left)/r.width*480-240)/U),cl((240-(e.clientY-r.top)/r.height*480)/U)])});
 let tw;
-const bub=(t,c="")=>{clearInterval(tw);const b=$("b");b.className=c;b.textContent="";let i=0;
+const bub=(t,c="")=>{t=t.replace(/−/g,"-").replace(/₁/g,"1").replace(/₂/g,"2");clearInterval(tw);const b=$("b");b.className=c;b.textContent="";let i=0;
  tw=setInterval(()=>{b.textContent=t.slice(0,++i);if(t[i-1]!==" ")blip();if(i>=t.length)clearInterval(tw)},28)};
 const say=t=>new Promise(r=>{bub(`${MASCOTA}: ${t}`);$("ui").innerHTML='<button id="nx">Siguiente ▶</button>';$("nx").focus();$("nx").onclick=r});
 function prog(){$("pb").style.width=Math.min(100,++nStep/TOTAL*100)+"%"}
-const num=s=>{s=s.trim().replace(",",".");if(s.includes("/")){const[a,b]=s.split("/");return a/b}return s===""?NaN:+s};
+const num=s=>{s=s.trim().replace(",",".").replace(/[−–]/g,"-");if(s.includes("/")){const[a,b]=s.split("/");return a/b}return s===""?NaN:+s};
 // ask: opts -> botones; f -> campos. ans=null no califica.
 function ask(id,text,o,ans,why){return new Promise(res=>{
  bub(`${MASCOTA}: ${text}`);const ui=$("ui");ui.innerHTML="";
@@ -78,8 +79,10 @@ function ask(id,text,o,ans,why){return new Promise(res=>{
    bub(`${MASCOTA}: ${ok?"¡Correcto! ":"Mmm, casi. "}${why}`,ok?"ok":"bad")}
   ui.innerHTML='<button id="nx">Siguiente ▶</button>';$("nx").focus();$("nx").onclick=()=>res(vals)};
  if(o.opts)o.opts.forEach(t=>{const b=document.createElement("button");b.textContent=t;b.onclick=()=>done([t]);ui.append(b)});
- else{const ins=o.f.map(x=>{const l=document.createElement("label"),i=document.createElement("input");
-   if(x.t)i.className="w";i.inputMode=x.t?"text":"decimal";l.append(x.l,i);ui.append(l);return i});
+ else{let cur;const ins=o.f.map(x=>{const l=document.createElement("label"),i=document.createElement("input");
+   if(x.t)i.className="w";i.inputMode=x.t?"text":"decimal";i.onfocus=()=>cur=i;l.append(x.l,i);ui.append(l);return i});
+  if(!o.f[0].t){const sg=document.createElement("button");sg.textContent="+/−";
+   sg.onclick=()=>{cur=cur||ins[0];cur.value=cur.value.startsWith("-")?cur.value.slice(1):"-"+cur.value;cur.focus()};ui.append(sg)}
   const b=document.createElement("button");b.textContent="Responder";ui.append(b);
   b.onclick=()=>{const v=ins.map(i=>i.value.trim());if(v.some(x=>!x))return;if(ans===null)who=v;done(v)};ins[0].focus()}
 })}
